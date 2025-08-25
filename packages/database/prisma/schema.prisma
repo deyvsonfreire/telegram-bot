@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String   // Campo para hash da senha
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  telegramSessions TelegramSession[]
+  exports          Export[]
+  jobs             Job[]
+
+  @@map("users")
+}
+
+model TelegramSession {
+  id                String            @id @default(cuid())
+  type              SessionType
+  label             String
+  phoneNumber       String?
+  status            SessionStatus     @default(PENDING)
+  encryptedSession  String?           // Sessão criptografada do TDLib
+  apiId             String?
+  apiHash           String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  createdBy         User              @relation(fields: [createdById], references: [id])
+  createdById       String
+  
+  dialogs           Dialog[]
+  contacts          Contact[]
+  jobs              Job[]
+
+  @@map("telegram_sessions")
+}
+
+model Dialog {
+  id          String   @id @default(cuid())
+  telegramId  BigInt  @unique // ID do Telegram
+  type        DialogType
+  title       String
+  username    String?
+  memberCount Int?
+  lastSyncAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  sessionId   String
+  session     TelegramSession @relation(fields: [sessionId], references: [id])
+  
+  members     Member[]
+  jobs        Job[]
+
+  @@map("dialogs")
+}
+
+model Member {
+  id          String   @id @default(cuid())
+  telegramId  BigInt  @unique // ID do usuário no Telegram
+  username    String?
+  firstName   String?
+  lastName    String?
+  phoneNumber String?  // Número criptografado
+  isContact   Boolean  @default(false)
+  isBot       Boolean  @default(false)
+  isDeleted   Boolean  @default(false)
+  lastSeen    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  dialogId    String
+  dialog      Dialog   @relation(fields: [dialogId], references: [id])
+  
+  contacts    Contact[]
+
+  @@map("members")
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  telegramId  BigInt  @unique
+  username    String?
+  firstName   String?
+  lastName   String?
+  phoneNumber String?  // Número criptografado
+  note        String?
+  tags        String[] // Array de tags
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  sessionId   String
+  session     TelegramSession @relation(fields: [sessionId], references: [id])
+  
+  memberId    String?
+  member      Member?  @relation(fields: [memberId], references: [id])
+
+  @@map("contacts")
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  type        JobType
+  status      JobStatus @default(PENDING)
+  payload     Json
+  result      Json?
+  error       String?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  sessionId   String?
+  session     TelegramSession? @relation(fields: [sessionId], references: [id])
+  
+  dialogId    String?
+  dialog      Dialog?  @relation(fields: [dialogId], references: [id])
+  
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
+
+  @@map("jobs")
+}
+
+model Export {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  filters     Json     // Filtros aplicados
+  fileUrl     String?
+  fileSize    Int?
+  status      ExportStatus @default(PENDING)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
+
+  @@map("exports")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum SessionType {
+  BOT
+  USER
+}
+
+enum SessionStatus {
+  PENDING
+  ACTIVE
+  ERROR
+  EXPIRED
+}
+
+enum DialogType {
+  PRIVATE
+  GROUP
+  CHANNEL
+  SUPERGROUP
+}
+
+enum JobType {
+  COLLECT_MEMBERS
+  SYNC_DIALOGS
+  SYNC_CONTACTS
+  EXPORT_DATA
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
