@@ -31,7 +31,7 @@ export class CollectMembersProcessor {
       });
 
       // Coletar membros via TDLib
-      const members = await this.tdlibService.getChatMembers(telegramDialogId);
+      const members = await this.tdlibService.getChatMembers(sessionId, Number(telegramDialogId));
       
       // Processar e salvar membros
       const savedMembers = [];

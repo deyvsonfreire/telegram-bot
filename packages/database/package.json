@@ -1,24 +1,19 @@
 {
   "name": "@telegram-manager/database",
   "version": "1.0.0",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "description": "Database schema and Prisma client for Telegram Manager",
+  "main": "src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
     "generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:studio": "prisma studio",
     "db:migrate": "prisma migrate dev",
-    "studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:reset": "prisma migrate reset"
   },
   "dependencies": {
     "@prisma/client": "^5.7.1"
   },
   "devDependencies": {
-    "@types/node": "^20.10.5",
-    "prisma": "^5.7.1",
-    "tsx": "^4.6.2",
-    "typescript": "^5.3.3"
+    "prisma": "^5.7.1"
   }
 }

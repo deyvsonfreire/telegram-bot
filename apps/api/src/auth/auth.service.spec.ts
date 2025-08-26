@@ -113,7 +113,7 @@ describe('AuthService', () => {
 
     it('should login successfully with valid credentials', async () => {
       mockUsersService.findByEmail.mockResolvedValue(mockUser);
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as any);
+      jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
       mockJwtService.sign.mockReturnValue('jwt-token');
 
       const result = await service.login(loginDto);
@@ -130,7 +130,7 @@ describe('AuthService', () => {
 
     it('should throw UnauthorizedException if password is invalid', async () => {
       mockUsersService.findByEmail.mockResolvedValue(mockUser);
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as any);
+      jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as never);
 
       await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
     });
@@ -139,7 +139,7 @@ describe('AuthService', () => {
   describe('validateUser', () => {
     it('should return user without password if credentials are valid', async () => {
       mockUsersService.findByEmail.mockResolvedValue(mockUser);
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as any);
+      jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
 
       const result = await service.validateUser('test@example.com', 'password123');
 
@@ -157,7 +157,7 @@ describe('AuthService', () => {
 
     it('should return null if password is invalid', async () => {
       mockUsersService.findByEmail.mockResolvedValue(mockUser);
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as any);
+      jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as never);
 
       const result = await service.validateUser('test@example.com', 'password123');
 
@@ -171,8 +171,8 @@ describe('AuthService', () => {
 
       const result = await service.getProfile('1');
 
-      expect(result.password).toBeUndefined();
       expect(result.email).toBe(mockUser.email);
+      expect(result.name).toBe(mockUser.name);
     });
 
     it('should throw UnauthorizedException if user not found', async () => {

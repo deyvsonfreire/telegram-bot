@@ -11,6 +11,15 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class TelegramController {
   constructor(private telegramService: TelegramService) {}
 
+  @Post('sessions/:sessionId/verify')
+  @ApiOperation({ summary: 'Verificar sessão do Telegram com código' })
+  async verifySession(
+    @Param('sessionId') sessionId: string,
+    @Body('code') code: string,
+  ) {
+    return this.telegramService.verifySession(sessionId, code);
+  }
+
   @Post('sessions')
   @ApiOperation({ summary: 'Criar nova sessão do Telegram' })
   async createSession(@Body() data: CreateSessionInput, @Request() req) {
@@ -64,7 +73,6 @@ export class TelegramController {
   ) {
     return this.telegramService.startCollectMembers(
       dialogId,
-      data.sessionId,
       req.user.id,
     );
   }

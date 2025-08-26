@@ -26,6 +26,8 @@ describe('TelegramService', () => {
     },
     job: {
       create: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
     },
   };
 
@@ -74,7 +76,7 @@ describe('TelegramService', () => {
 
   describe('createSession', () => {
     const createSessionData = {
-      type: 'USER' as const,
+      type: 'user' as const,
       label: 'Test Session',
       phoneNumber: '+1234567890',
       apiId: '12345',
@@ -91,7 +93,11 @@ describe('TelegramService', () => {
       expect(result).toEqual(mockSession);
       expect(mockPrismaService.telegramSession.create).toHaveBeenCalledWith({
         data: {
-          ...createSessionData,
+          type: 'USER',
+          label: createSessionData.label,
+          phoneNumber: createSessionData.phoneNumber,
+          apiId: createSessionData.apiId,
+          apiHash: createSessionData.apiHash,
           createdById: 'user1',
         },
       });
@@ -99,7 +105,7 @@ describe('TelegramService', () => {
     });
 
     it('should not initialize TDLib for bot sessions', async () => {
-      const botSessionData = { ...createSessionData, type: 'BOT' as const };
+      const botSessionData = { ...createSessionData, type: 'bot' as const };
       const mockSession = { id: '1', ...botSessionData };
       mockPrismaService.telegramSession.create.mockResolvedValue(mockSession);
 
@@ -197,15 +203,14 @@ describe('TelegramService', () => {
       mockQueue.add.mockResolvedValue({ id: 'job1' });
       mockPrismaService.job.create.mockResolvedValue({ id: 'job1' });
 
-      const result = await service.startCollectMembers('dialog1', 'session1', 'user1');
+      const result = await service.startCollectMembers('dialog1', 'user1');
 
       expect(result.jobId).toBe('job1');
       expect(mockQueue.add).toHaveBeenCalledWith(
         'collect-members',
         {
           dialogId: 'dialog1',
-          sessionId: 'session1',
-          telegramDialogId: 123,
+          telegramDialogId: 123n,
           dialogTitle: 'Dialog 1',
           userId: 'user1',
         },
@@ -217,7 +222,7 @@ describe('TelegramService', () => {
       mockPrismaService.dialog.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.startCollectMembers('dialog1', 'session1', 'user1')
+        service.startCollectMembers('dialog1', 'user1')
       ).rejects.toThrow('Diálogo não encontrado');
     });
   });

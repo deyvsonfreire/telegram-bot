@@ -36,7 +36,7 @@ export class AuthService {
         email,
         name,
         password: hashedPassword,
-        role: role || 'USER',
+        role: (role as 'ADMIN' | 'USER') || 'USER',
       },
     });
 

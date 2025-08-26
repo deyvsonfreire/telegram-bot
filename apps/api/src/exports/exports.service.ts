@@ -16,7 +16,7 @@ interface ExportFilters {
   search?: string;
 }
 
-interface ExportResult {
+export interface ExportResult {
   id: string;
   fileUrl: string;
   fileSize: number;

@@ -46,7 +46,7 @@ export class TelegramTdlibService implements OnModuleInit, OnModuleDestroy {
 
   async createSession(sessionData: TDLibSession): Promise<void> {
     try {
-      const client = new TDLib.TDLib();
+      const client = new TDLib.TDL({}, {});
       
       // Configurar parâmetros do TDLib
       await client.execute({

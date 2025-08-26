@@ -20,13 +20,17 @@ export class TelegramService {
       // Criar sessão no banco
       const session = await this.prisma.telegramSession.create({
         data: {
-          ...data,
+          type: data.type === 'user' ? 'USER' : 'BOT',
+          label: data.label,
+          phoneNumber: data.phoneNumber,
+          apiId: data.apiId,
+          apiHash: data.apiHash,
           createdById: userId,
         },
       });
 
       // Se for sessão de usuário, inicializar TDLib
-      if (data.type === 'USER' && data.apiId && data.apiHash) {
+      if (data.type === 'user' && data.apiId && data.apiHash) {
         await this.tdlibService.createSession({
           id: session.id,
           phoneNumber: data.phoneNumber || '',
@@ -47,6 +51,28 @@ export class TelegramService {
       where: { createdById: userId },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async verifySession(sessionId: string, code: string) {
+    try {
+      this.logger.log(`Verificando sessão ${sessionId} com código`);
+      await this.tdlibService.setCode(sessionId, code);
+      
+      // Atualizar status da sessão no banco
+      await this.prisma.telegramSession.update({
+        where: { id: sessionId },
+        data: { status: 'ACTIVE' },
+      });
+
+      return { success: true, message: 'Sessão verificada com sucesso' };
+    } catch (error) {
+      this.logger.error(`Erro ao verificar sessão ${sessionId}: ${error.message}`);
+      await this.prisma.telegramSession.update({
+        where: { id: sessionId },
+        data: { status: 'ERROR' },
+      });
+      throw error;
+    }
   }
 
   async getDialogs(sessionId: string) {
@@ -165,7 +191,7 @@ export class TelegramService {
     };
   }
 
-  async startCollectMembers(dialogId: string, sessionId: string, userId: string) {
+  async startCollectMembers(dialogId: string, userId: string) {
     const dialog = await this.prisma.dialog.findUnique({
       where: { id: dialogId },
     });
@@ -176,7 +202,6 @@ export class TelegramService {
 
     const job = await this.telegramQueue.add('collect-members', {
       dialogId,
-      sessionId,
       telegramDialogId: dialog.telegramId,
       dialogTitle: dialog.title,
       userId,
@@ -190,8 +215,7 @@ export class TelegramService {
     await this.prisma.job.create({
       data: {
         type: 'COLLECT_MEMBERS',
-        payload: { dialogId, sessionId },
-        sessionId,
+        payload: { dialogId },
         dialogId,
         createdById: userId,
       },

@@ -3,294 +3,133 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X, Bot, User, Phone, Key, Hash } from 'lucide-react';
-import { useMutation } from '@tanstack/react-query';
+import { z } from 'zod';
+import { X, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 
-interface CreateSessionInput {
-  type: 'bot' | 'user';
-  label: string;
-  phoneNumber?: string;
-  apiId?: string;
-  apiHash?: string;
-  botToken?: string;
-}
+const sessionSchema = z.object({
+  label: z.string().min(3, 'O rótulo deve ter pelo menos 3 caracteres'),
+  type: z.enum(['USER', 'BOT']),
+  phoneNumber: z.string().optional(),
+  token: z.string().optional(),
+}).refine(data => data.type === 'USER' ? !!data.phoneNumber : !!data.token, {
+  message: 'Número de telefone ou token do bot é obrigatório',
+  path: ['phoneNumber'], // or ['token']
+});
 
-interface CreateSessionFormProps {
-  onClose: () => void;
-  onSuccess: () => void;
-}
+const codeSchema = z.object({
+  code: z.string().min(4, 'O código deve ter pelo menos 4 caracteres'),
+});
 
-export function CreateSessionForm({ onClose, onSuccess }: CreateSessionFormProps) {
-  const [sessionType, setSessionType] = useState<'BOT' | 'USER'>('USER');
-  const [step, setStep] = useState<'form' | 'verification'>('form');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
+type SessionFormData = z.infer<typeof sessionSchema>;
+type CodeFormData = z.infer<typeof codeSchema>;
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    setValue,
-  } = useForm<CreateSessionInput>({
-    defaultValues: {
-      type: 'user',
-      label: '',
-      phoneNumber: '',
-      apiId: '',
-      apiHash: '',
-      botToken: '',
-    },
+export function CreateSessionForm({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void; }) {
+  const [step, setStep] = useState(1);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<SessionFormData>({
+    resolver: zodResolver(sessionSchema),
+    defaultValues: { type: 'USER' },
   });
 
-  const createSessionMutation = useMutation({
-    mutationFn: (data: CreateSessionInput) => 
-      api.post('/telegram/sessions', data).then(res => res.data),
-    onSuccess: (data) => {
-      if (data.type === 'USER' && data.phoneNumber) {
-        setPhoneNumber(data.phoneNumber);
-        setStep('verification');
-      } else {
-        onSuccess();
-      }
-    },
+  const { register: registerCode, handleSubmit: handleSubmitCode, formState: { errors: codeErrors } } = useForm<CodeFormData>({
+    resolver: zodResolver(codeSchema),
   });
 
-  const verifyCodeMutation = useMutation({
-    mutationFn: (code: string) => 
-      api.post(`/telegram/sessions/${phoneNumber}/verify`, { code }).then(res => res.data),
-    onSuccess: () => {
-      onSuccess();
-    },
-  });
+  const sessionType = watch('type');
 
-  const onSubmit = (data: CreateSessionInput) => {
-    createSessionMutation.mutate(data);
-  };
-
-  const handleVerifyCode = () => {
-    if (verificationCode.trim()) {
-      verifyCodeMutation.mutate(verificationCode);
+  const handleCreateSession = async (data: SessionFormData) => {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const response = await api.post('/telegram/sessions', data);
+      setSessionId(response.data.id);
+      setStep(2);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Ocorreu um erro ao criar a sessão.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (step === 'verification') {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 w-full max-w-md">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">Verificação do Telegram</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          
-          <div className="text-center mb-6">
-            <Phone className="w-12 h-12 text-blue-500 mx-auto mb-3" />
-            <p className="text-gray-600 mb-2">
-              Digite o código de verificação enviado para:
-            </p>
-            <p className="font-semibold text-gray-900">{phoneNumber}</p>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Código de Verificação
-              </label>
-              <input
-                type="text"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="12345"
-                maxLength={5}
-              />
-            </div>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleVerifyCode}
-                disabled={!verificationCode.trim() || verifyCodeMutation.isPending}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {verifyCodeMutation.isPending ? 'Verificando...' : 'Verificar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const handleVerifyCode = async (data: CodeFormData) => {
+    if (!sessionId) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await api.post(`/telegram/sessions/${sessionId}/verify`, { code: data.code });
+      onSuccess();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Código de verificação inválido.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-semibold">Nova Sessão do Telegram</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl p-6 sm:p-8 w-full max-w-md relative">
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+          <X className="w-6 h-6" />
+        </button>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Tipo de Sessão */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tipo de Sessão
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setSessionType('USER');
-                  setValue('type', 'user');
-                }}
-                className={`p-3 border rounded-lg flex flex-col items-center space-y-2 ${
-                  sessionType === 'USER'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-300 hover:border-gray-400'
-                }`}
-              >
-                <User className="w-5 h-5" />
-                <span className="text-sm font-medium">Usuário</span>
-                <span className="text-xs text-center">
-                  Acesso completo via MTProto
-                </span>
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => {
-                  setSessionType('BOT');
-                  setValue('type', 'bot');
-                }}
-                className={`p-3 border rounded-lg flex flex-col items-center space-y-2 ${
-                  sessionType === 'BOT'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-300 hover:border-gray-400'
-                }`}
-              >
-                <Bot className="w-5 h-5" />
-                <span className="text-sm font-medium">Bot</span>
-                <span className="text-xs text-center">
-                  Acesso limitado via Bot API
-                </span>
-              </button>
+        {step === 1 ? (
+          <form onSubmit={handleSubmit(handleCreateSession)} className="space-y-6">
+            <h2 className="text-2xl font-bold text-gray-900">Criar Nova Sessão</h2>
+            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">{error}</div>}
+            
+            <div>
+              <label htmlFor="label" className="block text-sm font-medium text-gray-700">Rótulo</label>
+              <input {...register('label')} id="label" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" />
+              {errors.label && <p className="mt-2 text-sm text-red-600">{errors.label.message}</p>}
             </div>
-          </div>
 
-          {/* Label */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Nome da Sessão
-            </label>
-            <input
-              type="text"
-              {...register('label', { required: 'Nome da sessão é obrigatório' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Ex: Conta Principal"
-            />
-            {errors.label && (
-              <p className="text-red-500 text-sm mt-1">{errors.label.message}</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Tipo de Sessão</label>
+              <select {...register('type')} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                <option value="USER">Usuário (Número de Telefone)</option>
+                <option value="BOT">Bot (Token)</option>
+              </select>
+            </div>
+
+            {sessionType === 'USER' ? (
+              <div>
+                <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700">Número de Telefone</label>
+                <input {...register('phoneNumber')} id="phoneNumber" placeholder="+5511999999999" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" />
+                {errors.phoneNumber && <p className="mt-2 text-sm text-red-600">{errors.phoneNumber.message}</p>}
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="token" className="block text-sm font-medium text-gray-700">Token do Bot</label>
+                <input {...register('token')} id="token" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" />
+                {errors.token && <p className="mt-2 text-sm text-red-600">{errors.token.message}</p>}
+              </div>
             )}
-          </div>
 
-          {/* Número de Telefone (apenas para usuário) */}
-          {sessionType === 'USER' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Número de Telefone
-              </label>
-              <input
-                type="tel"
-                {...register('phoneNumber')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="+55 11 99999-9999"
-              />
-              {errors.phoneNumber && (
-                <p className="text-red-500 text-sm mt-1">{errors.phoneNumber.message}</p>
-              )}
-            </div>
-          )}
-
-          {/* API ID e Hash (apenas para usuário) */}
-          {sessionType === 'USER' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  API ID
-                </label>
-                <input
-                  type="text"
-                  {...register('apiId')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="12345"
-                />
-                {errors.apiId && (
-                  <p className="text-red-500 text-sm mt-1">{errors.apiId.message}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  API Hash
-                </label>
-                <input
-                  type="text"
-                  {...register('apiHash')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="abcdef1234567890abcdef1234567890"
-                />
-                {errors.apiHash && (
-                  <p className="text-red-500 text-sm mt-1">{errors.apiHash.message}</p>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* Bot Token (apenas para bot) */}
-          {sessionType === 'BOT' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Token do Bot
-              </label>
-              <input
-                type="text"
-                {...register('botToken')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-              />
-              {errors.botToken && (
-                <p className="text-red-500 text-sm mt-1">{errors.botToken.message}</p>
-              )}
-            </div>
-          )}
-
-          {/* Botões */}
-          <div className="flex space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-            >
-              Cancelar
+            <button type="submit" disabled={isSubmitting} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50">
+              {isSubmitting ? <Loader2 className="animate-spin" /> : 'Avançar'}
             </button>
-            <button
-              type="submit"
-              disabled={createSessionMutation.isPending}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
-              {createSessionMutation.isPending ? 'Criando...' : 'Criar Sessão'}
+          </form>
+        ) : (
+          <form onSubmit={handleSubmitCode(handleVerifyCode)} className="space-y-6">
+            <h2 className="text-2xl font-bold text-gray-900">Verificar Sessão</h2>
+            <p className="text-sm text-gray-600">Insira o código de verificação que você recebeu no Telegram.</p>
+            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">{error}</div>}
+            
+            <div>
+              <label htmlFor="code" className="block text-sm font-medium text-gray-700">Código de Verificação</label>
+              <input {...registerCode('code')} id="code" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" />
+              {codeErrors.code && <p className="mt-2 text-sm text-red-600">{codeErrors.code.message}</p>}
+            </div>
+
+            <button type="submit" disabled={isSubmitting} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50">
+              {isSubmitting ? <Loader2 className="animate-spin" /> : 'Verificar e Salvar'}
             </button>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
     </div>
   );
